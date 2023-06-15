@@ -1,0 +1,245 @@
+/**
+@Author      Sudheer Kumar Basani
+@name        CG_INT_APIService
+@CreateDate  07/05/2020
+@Description Apex class for API Callout and process responses with error logging.	
+@Version     <1.0>
+@reference 
+*/
+global with sharing class CG_INT_APIService {
+    String recordId;
+    private static HTTPRequest httpRequest;
+    
+    /**
+*  Description    Method to invoke the API call as per request.
+*  @name          invokeAPI   
+*  @param 		  Request req
+*  @return 		  Response
+*  @throws exception Yes
+*/                
+    
+    public Response invokeAPI(Request req) {
+        HttpResponse res;
+        
+        String apiName=req.apiName;
+        try{
+            switch on apiName {
+                when 'businessCustomers' {
+                    res=    CG_INT_TIAAAuthorization.getBusinessCustomerDetails(req);
+                }
+                when 'lendingPrices' {
+                    res=    CG_INT_TIAAAuthorization.getPricingDetails(req);
+                }
+                when 'lendingRepayments' {
+                    res=    CG_INT_TIAAAuthorization.getRepaymentDetails(req);
+                }
+                when 'lendingDecisions' {
+                    res=    CG_INT_TIAAAuthorization.getDecisionDetails(req);
+                }
+                when 'lendingFulfilmentCases' {
+                    res=    CG_INT_TIAAAuthorization.getFulfilmentCaseDetails(req);
+                }
+                when 'businessTargetters' {
+                    res=    CG_INT_TIAAAuthorization.getBusinessTargetterDetails(req);
+                }
+                when 'rwmCalculationsOpp','rwmCalculationsCA' {
+                    res=    CG_INT_TIAAAuthorization.getRWMCalculations(req);
+                }
+            }}
+        catch (Exception ex) 
+        { 
+            String message = ex.getMessage();
+            ATH_LogHandler.logException(ex, 'CG_INT_APIService', 'apiName', 'API Service Call');
+            return processResponse(res, true, 'Exception in API callout:'+message);
+        }
+        
+        return   processResponse(res, false, null);
+    }
+    /**
+*  Description    Method to process API response.
+*  @name          processResponse   
+*  @param 		  HttpResponse httpResponse, Boolean isErrorThrown, String errorMessage
+*  @return 		  Response
+*  @throws exception No
+*/    
+    public Response processResponse(HttpResponse httpResponse, Boolean isErrorThrown, String errorMessage) {
+        Response processedResp;
+        Boolean isError;
+        String intError;
+        
+        if(httpResponse != NULL){
+            if (isErrorThrown == false) {
+                
+                if( httpResponse.getStatusCode() == 200){
+                    processedResp = new Response(httpResponse.getBody(), true, '');
+                }
+                else if( httpResponse.getStatusCode() == 201){
+                    processedResp = new Response(httpResponse.getBody(), true, '');
+                }
+                else if( httpResponse.getStatusCode() == 504){
+                    intError='Gateway Time-out';
+                    Map<String, Object> serverError = (Map<String, Object>) JSON.deserializeUntyped(httpResponse.getBody());                       
+                    intError=intError+':'+String.valueOf(serverError.get('reason'));
+                    processedResp = new Response('', false, intError);
+                }
+                else{
+                    if( httpResponse.getStatusCode() == 401){
+                        intError = 'Authorization Failed';
+                    }
+                    else if( httpResponse.getStatusCode() == 404){
+                        intError = 'Resource Not found';
+                    }
+                    else {
+                        if( httpResponse.getStatusCode() == 500 || httpResponse.getStatusCode() == 400){
+                            intError = 'Server Error';
+                        }
+                    }
+                    Map<String, Object> serverError = (Map<String, Object>) JSON.deserializeUntyped(httpResponse.getBody());
+                    if(serverError!=null&&serverError.containsKey('faultstring')){
+                        intError=intError+':'+String.valueOf(serverError.get('faultstring'));
+                    }
+                    else if(serverError!=null&&serverError.containsKey('error')){
+                        intError='error'+':'+String.valueOf(serverError.get('error'));
+                    }
+                    else if(httpResponse.getBody().contains('errors')){
+                        if(httpResponse.getBody().contains( 'errorCount')){
+                            INTAkanaErrorResponse iER = new INTAkanaErrorResponse();
+                            INTAkanaErrorResponse parseResponse = iER.parse(httpResponse.getBody());
+                            isError = true;
+                            if(parseResponse.errors!=null && parseResponse.errors.size()>0){
+                                for(integer i=0;i<parseResponse.errors.size();i++){
+                                    if(intError == null)
+                                        intError =parseResponse.errors[i].errorMsg;
+                                    else
+                                        intError = intError+', '+parseResponse.errors[i].errorMsg;
+                                    
+                                }
+                            } 
+                        }                        
+                        else{INTErrorResponse iER = new INTErrorResponse();
+                             INTErrorResponse parseResponse = iER.parse(httpResponse.getBody());
+                             isError = true;
+                             if(parseResponse.errors!=null && parseResponse.errors.size()>0){
+                                 for(integer i=0;i<parseResponse.errors.size();i++){
+                                     if(intError == null)
+                                         intError =parseResponse.errors[i].code+':'+ parseResponse.errors[i].title;
+                                     else
+                                         intError = intError+', '+parseResponse.errors[i].code+':'+parseResponse.errors[i].title;
+                                     if(parseResponse.errors[i].detail!=null)
+                                         intError=intError+':'+parseResponse.errors[i].detail;
+                                     
+                                 }
+                             }}
+                    }
+                    processedResp = new Response('', false, intError);
+                }
+                
+            }
+            else {
+                if (httpResponse != null){
+                    processedResp = new Response(httpResponse.getBody(), false, errorMessage);
+                }
+                else{
+                    processedResp = new Response('', false, errorMessage);
+                }
+            }
+            
+        }
+        else{
+            if (isErrorThrown == true){
+                processedResp = new Response('',false,errorMessage);
+            }
+        }   
+        return processedResp;
+    }
+    /**
+@Author      Sudheer Kumar Basani
+@name        Response
+@CreateDate  07/05/2020
+@Description global apex class for Response.
+@Version     <1.0>
+@reference 
+*/
+    
+    global class Response {
+        public string jsonResponse;
+        public string errorMessage;
+        public Boolean isSuccess;
+        
+        public response(string jsonResponse, Boolean isSuccess, String errorMessage) {
+            this.isSuccess = isSuccess;
+            this.jsonResponse = jsonResponse;
+            this.errorMessage = errorMessage;
+        }
+    }
+    /**
+@Author      Sudheer Kumar Basani
+@name        Request
+@CreateDate  07/05/2020
+@Description global apex class for API Request.
+@Version     <1.0>
+@reference 
+*/
+    global class Request {
+        public string jsonRequest;
+        public string recordId;
+        public String custORappId;//customer id or application id
+        public String apiName;
+        public String httpMethod;
+        
+        
+        public Request(string recordId, String jsonRequest, String apiName,String custORappId, String httpMethod) {
+            this.recordId = recordId;
+            this.jsonRequest = jsonRequest;
+            this.apiName = apiName;
+            this.custORappId=custORappId;
+            this.httpMethod=httpMethod;
+            
+        }
+    }
+    
+    @TestVisible
+    public class INTErrorResponse {
+        public List<Errors> errors;	
+        public INTErrorResponse parse(String json) {
+            return (INTErrorResponse) System.JSON.deserialize(json, INTErrorResponse.class);
+        }
+    }
+    /**
+@Author      Sudheer Kumar Basani
+@name        Errors
+@CreateDate  07/05/2020
+@Description global apex class for API Errors.
+@Version     <1.0>
+@reference 
+*/    
+    public class Errors {
+        public String id;
+        public String code;
+        public String title;
+        public String detail;
+    }
+    @TestVisible
+    public class INTAkanaErrorResponse {
+        public Integer errorCount;
+        public List<AkanaErrors> errors;	
+        public INTAkanaErrorResponse parse(String json) {
+            return (INTAkanaErrorResponse) System.JSON.deserialize(json, INTAkanaErrorResponse.class);
+        }
+    }
+    /**
+@Author      Sudheer Kumar Basani
+@name        AkanaErrors
+@CreateDate  07/05/2020
+@Description global apex class for API Error code and messages.
+@Version     <1.0>
+@reference 
+*/
+    public class AkanaErrors {
+        public String seq;
+        public String errorCode;
+        public String errorMsg;
+        public String path;        
+    }    
+}
+

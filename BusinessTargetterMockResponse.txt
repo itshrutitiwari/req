@@ -1,0 +1,667 @@
+@Author      Chenna Kranthi
+@name        BusinessTargetterMockResponse
+@CreateDate  2020-05-12
+@Description Apex class to create Business Target BT Api mock response.
+@Version     <1.0>
+@reference 
+*/
+public with sharing class BusinessTargetterMockResponse {
+    
+    public Data data {get;set;}
+    public static String genericErrorMessage = 'Something went wrong.Please try again.';
+    /**
+*  Description    Method to get business targetter records.
+*  @name          getAllBusinessTargetterRecords
+*  @param 		  String creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/      
+    public static CG_INT_APIService.Response getAllBusinessTargetterRecords(String creditAppId){
+        LLC_BI__Product_Package__c creditApp = getCreditAppDetails(creditAppId);
+        
+        List<Mock_Business_Targetter__c> businessTargetterList = new List<Mock_Business_Targetter__c>();
+        if(creditApp != null){         
+            businessTargetterList = getbusinessTargetterRecords(creditApp); 
+        }
+        List<BusinessTargetterWrapperClass> finalBusinessTargetterWrapperList = new List<BusinessTargetterWrapperClass>();
+        
+        if(businessTargetterList!= null && !businessTargetterList.isEmpty()){                
+            
+            BusinessTargetterWrapperClass businessTargetterWrapperRecord = new BusinessTargetterWrapperClass();
+            businessTargetterWrapperRecord.data  = new BusinessTargetterWrapperClass.Data(); 
+            businessTargetterWrapperRecord.data.Attributes = new BusinessTargetterWrapperClass.Attributes();
+            
+            //no need to set now 
+            businessTargetterWrapperRecord.data.Attributes.localityResolution = new BusinessTargetterWrapperClass.LocalityResolution();
+            businessTargetterWrapperRecord.data.Attributes.localityResolution.warning = new BusinessTargetterWrapperClass.Warning();
+            businessTargetterWrapperRecord.data.Attributes.localityResolution.warning.errorCode = new List<BusinessTargetterWrapperClass.ErrorCode>();
+            BusinessTargetterWrapperClass.SearchSummary searchSummary = new BusinessTargetterWrapperClass.SearchSummary();
+            searchSummary.numberMatches=1;
+            searchSummary.businessName='Test Business';
+            searchSummary.postTown='London';
+            searchSummary.postcode='E15 1HP';
+            businessTargetterWrapperRecord.data.Attributes.searchSummary =searchSummary;
+            
+            BusinessTargetterWrapperClass.Location location = new BusinessTargetterWrapperClass.Location();
+            location.postTown='London';
+            location.county='UK';
+            location.district='London';
+            location.rmc='London';
+            
+            businessTargetterWrapperRecord.data.Attributes.searchSummary =searchSummary;
+            businessTargetterWrapperRecord.data.Attributes.searchResults = new List<BusinessTargetterWrapperClass.SearchResults>();
+            
+            for(Mock_Business_Targetter__c mockRecord : businessTargetterList){
+                BusinessTargetterWrapperClass.SearchResults searchResult = new BusinessTargetterWrapperClass.SearchResults();
+                searchResult.legalStatus = mockRecord.Legal_Status__c;
+                searchResult.businessRef = mockRecord.Reference__c;
+                searchResult.commercialName = mockRecord.Commercial_Name__c;
+                searchResult.businessActivities = mockRecord.Business_Activities__c; 
+                searchResult.matchedPostcode = mockRecord.Post_Code__c; 
+                searchResult.businessLocation = new BusinessTargetterWrapperClass.BusinessLocation();
+                
+                searchResult.businessLocation.locationLine1 = mockRecord.LocationLine1__c; 
+                searchResult.businessLocation.locationLine2 = mockRecord.LocationLine2__c;
+                searchResult.businessLocation.locationLine3 = mockRecord.LocationLine3__c;
+                searchResult.businessLocation.locationLine4 = mockRecord.LocationLine4__c;
+                searchResult.businessLocation.locationLine5 = mockRecord.LocationLine5__c;
+                searchResult.businessLocation.postcode = mockRecord.Post_Code__c;
+                
+                searchResult.sicinformation = new BusinessTargetterWrapperClass.Sicinformation();
+                searchResult.sicinformation.codeType = mockRecord.SIC_Code_Type__c; 
+                searchResult.sicinformation.description = mockRecord.SIC_Code_Description__c;
+                searchResult.sicinformation.siccode = mockRecord.SIC_Code__c;                   
+                businessTargetterWrapperRecord.data.Attributes.searchResults.add(searchResult);                                 
+            }                
+            finalBusinessTargetterWrapperList.add(businessTargetterWrapperRecord);            		
+        }
+        String mockResponse = JSON.serialize(finalBusinessTargetterWrapperList); 
+        Object[] businessTargetterRecords = (Object[])JSON.deserializeUntyped(mockResponse);
+        
+        Map<String,Object> businessTargetterInfoRecords = new Map<String,Object>();
+        
+        for(Object attributeNode : businessTargetterRecords){    
+            businessTargetterInfoRecords = (Map<String,Object>)attributeNode;             
+        }
+        
+        CG_INT_APIService.Response businessTargetterResponse = new CG_INT_APIService.Response('', true, '');
+        businessTargetterResponse.jsonResponse =JSON.serialize(businessTargetterInfoRecords);
+        
+        if(mockResponse == null || mockResponse == ''){
+            businessTargetterResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){
+            businessTargetterResponse.isSuccess= true;
+        }
+        
+        return businessTargetterResponse;    
+    }
+    /**
+*  Description    Method to get Credit application details.
+*  @name          getCreditAppDetails
+*  @param 		  String creditAppId
+*  @return 		  LLC_BI__Product_Package__c
+*  @throws exception No
+*/         
+    public static LLC_BI__Product_Package__c getCreditAppDetails(String creditAppId){
+        LLC_BI__Product_Package__c creditApp = [Select id,LLC_BI__Account__c
+                                                FROM LLC_BI__Product_Package__c
+                                                Where id =: creditAppId];
+        return creditApp;
+    }
+    /**
+*  Description    Method to get business targetter details.
+*  @name          getbusinessTargetterRecords
+*  @param 		  String creditAppId
+*  @return 		  List<Mock_Business_Targetter__c>
+*  @throws exception No
+*/             
+    public static List<Mock_Business_Targetter__c> getbusinessTargetterRecords(LLC_BI__Product_Package__c creditApp){
+        List<Mock_Business_Targetter__c> businessTargetterRecordList = new List<Mock_Business_Targetter__c>
+            ([SELECT id,Name,Add_Line1__c,Add_Line2__c,Add_Line3__c,Add_Line4__c,Add_Line5__c,Add_Line6__c,
+              Business_Activities__c,Business_Details_Post_Code__c,Commercial_Name__c,
+              Customer_name__c,Legal_Status__c,LocationLine1__c,LocationLine2__c,locationLine3__c,
+              LocationLine4__c,LocationLine5__c,Post_Code__c,Reference__c,
+              SIC_Code_Description__c,SIC_Code_Type__c,SIC_Code__c,
+              Organisation__c FROM Mock_Business_Targetter__c
+              where Organisation__c =:  creditApp.LLC_BI__Account__c                                                      		
+             ]);
+        return businessTargetterRecordList;
+    }
+    /**
+*  Description    Method to get pricing records.
+*  @name          getAllPricingRecords
+*  @param 		  String creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/                 
+    public static CG_INT_APIService.Response getAllPricingRecords(String creditAppId){
+        List<CG_Mock_Decision_Response_Table__c> decisionHistoryRecord = getDecisionHistoryDetails(creditAppId);
+        List<CG_Mock_Quote_Response_Table__c> quoteDetailRecords = getQuoteDetailRecords(creditAppId);    
+        List<CG_INT_BBAssistedLendingResponseWrapper> finalPricingWrapperRecord = new List<CG_INT_BBAssistedLendingResponseWrapper>();
+        if(decisionHistoryRecord!= null && !decisionHistoryRecord.isEmpty()){                
+            genericPricingWrapperRecord(finalPricingWrapperRecord, decisionHistoryRecord, quoteDetailRecords);
+        }
+        
+        String mockResponse = JSON.serialize(finalPricingWrapperRecord); 
+        Object[] lendingPricesRecords = (Object[])JSON.deserializeUntyped(mockResponse);
+        
+        Map<String,Object> lendingPricesRecordsInfoRecords = new Map<String,Object>(); 
+        for(Object attributeNode : lendingPricesRecords){    
+            lendingPricesRecordsInfoRecords = (Map<String,Object>)attributeNode;             
+        }
+        
+        CG_INT_APIService.Response lendingPricesResponse = new CG_INT_APIService.Response('', true, '');
+        lendingPricesResponse.jsonResponse =JSON.serialize(lendingPricesRecordsInfoRecords);
+        
+        if(mockResponse == null || mockResponse == ''){
+            lendingPricesResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            lendingPricesResponse.isSuccess= true;
+        } 
+        return lendingPricesResponse;
+    }
+    /**
+*  Description    Method to get decision records.
+*  @name          getAllDecisionRecords
+*  @param 		  String creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/                 
+    
+    public static CG_INT_APIService.Response getAllDecisionRecords(String creditAppId){
+        List<CG_Mock_Decision_Response_Table__c> decisionHistoryRecord = getDecisionHistoryDetails(creditAppId);
+        List<CG_INT_BBAssistedLendingResponseWrapper> finalPricingWrapperRecord = new List<CG_INT_BBAssistedLendingResponseWrapper>();
+        
+        if(decisionHistoryRecord!= null && !decisionHistoryRecord.isEmpty()){                
+            genericPricingWrapperRecord(finalPricingWrapperRecord, decisionHistoryRecord, null); 		
+            
+        } 
+        String mockResponse = JSON.serialize(finalPricingWrapperRecord); 
+        Object[] lendingPricesRecords = (Object[])JSON.deserializeUntyped(mockResponse);
+        
+        Map<String,Object> lendingPricesRecordsInfoRecords = new Map<String,Object>(); 
+        
+        for(Object attributeNode : lendingPricesRecords){    
+            lendingPricesRecordsInfoRecords = (Map<String,Object>)attributeNode;             
+        }
+        
+        CG_INT_APIService.Response lendingPricesResponse = new CG_INT_APIService.Response('', true, '');
+        lendingPricesResponse.jsonResponse =JSON.serialize(lendingPricesRecordsInfoRecords);
+        
+        if(mockResponse == null || mockResponse == ''){
+            lendingPricesResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            lendingPricesResponse.isSuccess= true;
+        } 
+        
+        return lendingPricesResponse;
+    }
+    
+    /*
+*  Description    Method to get the lending fulfilment cases details.
+*  @name          getLendingFulfilmentCases
+*  @param 		  String creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/      
+    public static CG_INT_APIService.Response getLendingFulfilmentCases(String creditAppId){
+        CG_INT_APIService.Response lendingFulfilmentCases = new CG_INT_APIService.Response('', true, '');
+        return lendingFulfilmentCases;
+    }
+    
+    /**
+*  Description    Method to get decision history mock response details.
+*  @name          getDecisionHistoryDetails
+*  @param 		  String creditAppId
+*  @return 		  List<CG_Mock_Decision_Response_Table__c>
+*  @throws exception No
+*/          
+    public static List<CG_Mock_Decision_Response_Table__c> getDecisionHistoryDetails(String creditApp){
+        List<CG_Mock_Decision_Response_Table__c> decisionHistoryRecordList = new List<CG_Mock_Decision_Response_Table__c>
+            ([SELECT id,
+              Strategy_Manager_release_version_date__c,
+              Strategy_Manager_release_version_number__c,
+              Business_data_available__c, 
+              Personal_data_available__c, 
+              Commercial_bureau_call_completed__c, 
+              Consumer_bureau_call_completed__c, 
+              Total_number_of_personal_CCJs__c, 
+              Total_no_of_outstanding_personal_CCJs__c, 
+              Total_value_of_personal_CCJs__c, 
+              Total_value_of_outstanding_personal_CCJs__c, 
+              Time_since_most_recent_personal_CCJs__c, 
+              Time_since_most_recent_OS_personal_CCJs__c, 
+              Total_value_of_personal_defaults__c, 
+              Total_number_of_personal_defaults__c, 
+              Time_since_most_recent_personal_defaulft__c,
+              Total_outstanding_balance_excl_mortgage__c,
+              Total_outstanding_mortgage_balance__c,
+              Repayment_excluding_mortgage__c,Policy_Rule_Id__c,
+              Repayment_including_mortgage__c,Fraud_Decision__c,Application_Decision__c,
+              New_young_or_mature_to_bank__c,
+              Customer_CAIV_Profile_classification__c,
+              Probability_of_default__c,
+              Annual_credit_turnover__c,
+              Bank_relationship_start_date__c,
+              Commercial_Delphi_Score__c,
+              Delphi_Band__c,
+              Delphi_Failure_Odds__c,
+              Total_no_Comm_CCJs_12_months_old__c,
+              Total_no_Comm_CCJs_13_24_mts_old__c,
+              Total_NLTD_Comm_CCJs_6_years_old__c,
+              SM_release_version_date_from_PCCM__c,
+              SM_release_version_number_from_PCCM__c,
+              PCCM_run_date__c,
+              Segmentation_based_on_Risk_Grade__c,
+              Final_BPAL_limit_from_batch_PCCM__c,
+              SM_release_version_number_for_XR__c,
+              Segmentation_based_on_Risk_Grade_for_XR__c,
+              SM_release_version_date_for_XR_products__c,
+              Indicator_for_waterfall_Old_New__c,
+              OD_BPAL_limit__c,
+              Total_unsecured_limit__c,
+              Banner_limit__c,
+              eBDR_reference__c,Auto_Decision_Overall__c,Credit_Decision__c,Credit_Decision_Text__c,
+              Credit_Decision_Date__c,Total_Primary_Group_Exposure__c,Customer_Segment__c,
+              Auto_Decision_Credit__c,Live_Personal_Search__c,Batch_Personal_Bureau__c,
+              Reason_1_CR__c,Reason_2_CR__c,Reason_3_CR__c,Reason_4_CR__c,Reason_5_CR__c,
+              Reason_6_CR__c,Reason_7_CR__c,Reason_8_CR__c,Reason_9_CR__c,Reason_10_CR__c,
+              Reason_11_CR__c,Reason_12_CR__c,Reason_13_CR__c,Reason_14_CR__c,Reason_15_CR__c,
+              Reason_16_CR__c,Reason_17_CR__c,Reason_18_CR__c,Reason_19_CR__c,Reason_20_CR__c,
+              Reason_1__c,Reason_2__c,Reason_3__c,Reason_4__c,Reason_5__c,
+              Reason_6__c,Reason_7__c,Reason_8__c,Reason_9__c,Reason_10__c,
+              Reason_11__c,Reason_12__c,Reason_13__c,Reason_14__c,Reason_15__c,
+              Reason_16__c,Reason_17__c,Reason_18__c,Reason_19__c,Reason_20__c,
+              Mock_Decision_System_ID_For_Organisation__c ,Fraud_SystemId__c,Auto_Decision_Central_Refer__c,Mock_Risk_Grade_For_Organisation__c 
+              FROM CG_Mock_Decision_Response_Table__c
+              where Credit_Application__c =:creditApp AND isMockRecord__c = true                                         		
+             ]);
+        return decisionHistoryRecordList;
+    }
+    /**
+*  Description    Method to get Quote  mock response details.
+*  @name          getQuoteDetailRecords
+*  @param 		  String creditAppId
+*  @return 		  List<CG_Mock_Quote_Response_Table__c>
+*  @throws exception No
+*/          
+    
+    public static List<CG_Mock_Quote_Response_Table__c> getQuoteDetailRecords(String creditApp){
+        List<CG_Mock_Quote_Response_Table__c> quoteDetailRecordList = new List<CG_Mock_Quote_Response_Table__c>
+            ([SELECT id,
+              Margin_Rate__c,
+              Fixed_Rate_Cost_of_Funds__c,
+              Base_Rate__c,
+              Total_Rate__c,
+              APR__c,
+              Loan__c,
+              Loan__r.id,
+              First_Repayment_Date__c,
+              Repayment_Amount__c,
+              Balloon_Repayment_Amount__c,
+              Mock_Discretion_Product_Fee__c,
+              TotalRepayment_Amount__c FROM CG_Mock_Quote_Response_Table__c
+              where Product_Package__c =:creditApp AND isMockRecord__c = true                                         		
+             ]);
+        return quoteDetailRecordList;
+    }
+    
+    /**
+*  Description    Method to get Mock Business Customer Marker records.
+*  @name          getCustomerBPALRecords
+*  @param 		  String customerId
+*  @return 		  List<Mock_Business_Customer_BPAL__c>
+*  @throws exception No
+*/          
+    public static List<Mock_Business_Customer_BPAL__c> getCustomerBPALRecords(String customerId){
+        List<Mock_Business_Customer_BPAL__c> lstBPALObj = new List<Mock_Business_Customer_BPAL__c>([Select Name,Organisation__c,
+                                                                                                    Limit_Type__c,Details__c,Display_Order__c,
+                                                                                                    Last_Refreshed_Date__c,finalBannerLimit__c,
+                                                                                                    loanFinalLimit__c,overdraftLimit__c,xrFinalLimit__c
+                                                                                                    From Mock_Business_Customer_BPAL__c 
+                                                                                                    where Organisation__r.Customer_Id__c =:customerId ]); 
+        return lstBPALObj; 
+    }//End
+    
+    /**
+*  Description    Method to get Mock Business Customer Marker records
+*  @name          getCustomerMarkerRecords
+*  @param 		  String customerId
+*  @return 		  List<Mock_Business_Customer_Marker__c>
+*  @throws exception No
+*/          
+    
+    public static List<Mock_Business_Customer_Marker__c> getCustomerMarkerRecords(String customerId){
+        List<Mock_Business_Customer_Marker__c> lstMarkerObj = new List<Mock_Business_Customer_Marker__c>([Select Name, code__c,decode__c,Organisation__c,
+                                                                                                          Display_Name__c,Display_Order__c,Date__c,Acquisition_Risk_Grade_Date__c
+                                                                                                          From Mock_Business_Customer_Marker__c 
+                                                                                                          where Organisation__r.Customer_Id__c =:customerId ]); 
+        return lstMarkerObj;
+        
+    }//End 
+    
+    /**
+*  Description    LendingRepayments mock response
+*  @name          getAllLendingRepayments
+*  @param 		  String CG_INT_APIService.Response
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/ 
+    public static CG_INT_APIService.Response getAllLendingRepayments(String creditAppId){
+        
+        List<CG_Mock_Quote_Response_Table__c> pricingDetailList = getQuoteDetailRecords(creditAppId);
+        CG_INT_PricingResponseWrapper repaymentWrapperRecord = new CG_INT_PricingResponseWrapper();
+        
+        repaymentWrapperRecord.data = new CG_INT_PricingResponseWrapper.Data();
+        repaymentWrapperRecord.data.Attributes = new CG_INT_PricingResponseWrapper.Attributes();
+        repaymentWrapperRecord.data.Attributes.processMessages = new List<CG_INT_PricingResponseWrapper.ProcessMessages>();
+        repaymentWrapperRecord.data.Attributes.processResponse = new CG_INT_PricingResponseWrapper.ProcessResponse();
+        List<CG_INT_PricingResponseWrapper.FacilityDetail> facilitydetailList = new List<CG_INT_PricingResponseWrapper.FacilityDetail>();
+        
+        for(CG_Mock_Quote_Response_Table__c pricingOption : pricingDetailList){
+            CG_INT_PricingResponseWrapper.FacilityDetail facility = new CG_INT_PricingResponseWrapper.FacilityDetail();
+            facility.facilitydetailId = pricingOption.Loan__c;
+            facility.costOfFunds = String.valueOf(pricingOption.Fixed_Rate_Cost_of_Funds__c);
+            facility.totalRate = String.valueOf(pricingOption.Total_Rate__c);
+            facility.boeRate = String.valueOf(pricingOption.Base_Rate__c);
+            facility.repaymentProfile = new CG_INT_PricingResponseWrapper.RepaymentProfile();
+            facility.repaymentProfile.loanRepaymentDetails = new CG_INT_PricingResponseWrapper.LoanRepaymentDetails();
+            facility.repaymentProfile.loanRepaymentDetails.annualPercentageRate = String.valueOf(pricingOption.APR__c);
+            facility.repaymentProfile.loanRepaymentDetails.firstPayDate = String.valueOf(pricingOption.First_Repayment_Date__c);
+            facility.repaymentProfile.loanRepaymentDetails.balloonRepayAmount = new CG_INT_PricingResponseWrapper.BalloonRepayAmount();
+            facility.repaymentProfile.loanRepaymentDetails.balloonRepayAmount.amount = String.valueOf(pricingOption.Balloon_Repayment_Amount__c);
+            facility.repaymentProfile.loanRepaymentDetails.totalAmountPayable = new CG_INT_PricingResponseWrapper.BalloonRepayAmount();
+            facility.repaymentProfile.loanRepaymentDetails.totalAmountPayable.amount = String.valueOf(pricingOption.TotalRepayment_Amount__c);
+            facility.repaymentProfile.loanRepaymentDetails.repaymentAmount = new CG_INT_PricingResponseWrapper.BalloonRepayAmount();
+            facility.repaymentProfile.loanRepaymentDetails.repaymentAmount.amount = String.valueOf(pricingOption.Repayment_Amount__c);
+            
+            facilitydetailList.add(facility);
+        }
+        
+        repaymentWrapperRecord.data.Attributes.processResponse.facilityDetail = facilitydetailList;
+        
+        String mockResponse = JSON.serialize(repaymentWrapperRecord); 
+        
+        CG_INT_APIService.Response lendingRepaymentsResponse = new CG_INT_APIService.Response('', true, '');
+        lendingRepaymentsResponse.jsonResponse =JSON.serialize(repaymentWrapperRecord);
+        
+        if(mockResponse == null || mockResponse == ''){
+            lendingRepaymentsResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            lendingRepaymentsResponse.isSuccess= true;
+        }
+        
+        return lendingRepaymentsResponse;
+    }
+    
+    //updateLendingDecisions, updateDeclineDecisions, updateWithdrawDecisions mock response
+    /**
+*  Description    Method to get updated decision mock response.
+*  @name          getUpdateDecisionMockResponse
+*  @param 		  string creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/ 
+    public static CG_INT_APIService.Response getUpdateDecisionMockResponse(String creditAppId){
+        
+        BusinessTargetterMockResponse updateDecision = new BusinessTargetterMockResponse();
+        updateDecision.data = new BusinessTargetterMockResponse.Data();
+        updateDecision.data.attributes = new BusinessTargetterMockResponse.Attributes();
+        updateDecision.data.attributes.processMessages = new List<BusinessTargetterMockResponse.ProcessMessages>();
+        updateDecision.data.attributes.processResponse = new BusinessTargetterMockResponse.ProcessResponse();
+        updateDecision.data.attributes.processResponse.status = 'Complete';
+        
+        String mockResponse = JSON.serialize(updateDecision); 
+        CG_INT_APIService.Response updateDecisionResponse = new CG_INT_APIService.Response('', true, '');
+        updateDecisionResponse.jsonResponse =JSON.serialize(updateDecision);
+        
+        if(mockResponse == null || mockResponse == ''){
+            updateDecisionResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            updateDecisionResponse.isSuccess= true;
+        }
+        return updateDecisionResponse;
+    }
+    
+    /**
+*  Description    Method to get lendingFulfilmentCases mock response.
+*  @name          getlendingFulfilmentCasesResponse
+*  @param 		  string creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/ 
+    public static CG_INT_APIService.Response getlendingFulfilmentCasesResponse(String creditAppId){
+        
+        BusinessTargetterMockResponse mockCaseResponse = new BusinessTargetterMockResponse();
+        mockCaseResponse.data = new BusinessTargetterMockResponse.Data();
+        mockCaseResponse.data.attributes = new BusinessTargetterMockResponse.Attributes();
+        mockCaseResponse.data.attributes.processMessages = new List<BusinessTargetterMockResponse.ProcessMessages>();
+        mockCaseResponse.data.attributes.processResponse = new BusinessTargetterMockResponse.ProcessResponse();
+        mockCaseResponse.data.attributes.processResponse.caseReferenceNumber = [Select Mock_Fulfillment_Case_Ref_No__c from CG_Mock_Decision_Response_Table__c where Credit_Application__c=:creditAppId  limit 1].Mock_Fulfillment_Case_Ref_No__c;
+        
+        String mockResponse = JSON.serialize(mockCaseResponse); 
+        CG_INT_APIService.Response fulfilmentCasesResponse = new CG_INT_APIService.Response('', true, '');
+        fulfilmentCasesResponse.jsonResponse =JSON.serialize(mockCaseResponse);
+        
+        if(mockResponse == null || mockResponse == ''){
+            fulfilmentCasesResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            fulfilmentCasesResponse.isSuccess= true;
+        }
+        return fulfilmentCasesResponse;
+    }
+    
+    public class Data {
+        public String id {get;set;} 
+        public String type_Z {get;set;} 
+        public Attributes attributes {get;set;} 
+        public Data(){}
+    }
+    
+    public class Attributes {
+        public String applicationId {get;set;} 
+        public String processCallDatetimeStamp {get;set;} 
+        public List<ProcessMessages> processMessages {get;set;} 
+        public ProcessResponse processResponse {get;set;} 
+        public Attributes() {}
+        
+    }
+    
+    public class ProcessMessages {
+        public String code {get;set;} 
+        public String message {get;set;} 
+        public String type_Z {get;set;} 
+        public String origin {get;set;} 
+        public ProcessMessages() {}
+    }
+    
+    public class ProcessResponse {
+        public String status {get;set;}
+        public String caseReferenceNumber {get;set;}
+        public ProcessResponse() {}
+    }    
+    
+    public static void genericPricingWrapperRecord(List<CG_INT_BBAssistedLendingResponseWrapper> finalPricingWrapperRecord, 
+                                                   List<CG_Mock_Decision_Response_Table__c> decisionHistoryRecord, List<CG_Mock_Quote_Response_Table__c> quoteDetailRecords)
+    {
+        for(CG_Mock_Decision_Response_Table__c mockRecord : decisionHistoryRecord){
+            
+            CG_INT_BBAssistedLendingResponseWrapper pricingWrapperRecord = new CG_INT_BBAssistedLendingResponseWrapper();
+            PricingWrapperRecord.data  = new CG_INT_BBAssistedLendingResponseWrapper.Data(); 
+            PricingWrapperRecord.data.Attributes = new CG_INT_BBAssistedLendingResponseWrapper.Attributes();
+            
+            //no need to set now 
+            PricingWrapperRecord.data.Attributes.processMessages = new List<CG_INT_BBAssistedLendingResponseWrapper.processMessages>();
+            PricingWrapperRecord.data.Attributes.processResponse = new CG_INT_BBAssistedLendingResponseWrapper.processResponse();
+            PricingWrapperRecord.data.Attributes.processResponse.decisionSystemId = mockRecord.Mock_Decision_System_ID_For_Organisation__c;
+            PricingWrapperRecord.data.Attributes.processResponse.applicationDecision = mockRecord.Auto_Decision_Overall__c;
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput = new CG_INT_BBAssistedLendingResponseWrapper.SmOutput();
+            
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.smReleaseDate = mockRecord.Strategy_Manager_release_version_date__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.smReleaseNumber = mockRecord.Strategy_Manager_release_version_number__c;  
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.batchBusnessBureau = mockRecord.Business_data_available__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.batchPersBureau = mockRecord.Personal_data_available__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.liveSearchDataB = mockRecord.Commercial_bureau_call_completed__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.liveSearchDataP = mockRecord.Consumer_bureau_call_completed__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totNumCCJsPers = mockRecord.Total_number_of_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totNumOSCCJsPers = mockRecord.Total_no_of_outstanding_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totVCCJsPers = mockRecord.Total_value_of_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totVOSCCJsPers = mockRecord.Total_value_of_outstanding_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.tsmrCCJsPers = mockRecord.Time_since_most_recent_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.tsmrOSCCJsPers = mockRecord.Time_since_most_recent_OS_personal_CCJs__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totNumDefPers = mockRecord.Total_value_of_personal_defaults__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totValDefPers = mockRecord.Total_number_of_personal_defaults__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.tsmrDefPers = mockRecord.Time_since_most_recent_personal_defaulft__c; 
+            
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totOSBalExMtg = mockRecord.Total_outstanding_balance_excl_mortgage__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totOSBalMtgOnly = mockRecord.Total_outstanding_mortgage_balance__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.repayExMtg = mockRecord.Repayment_excluding_mortgage__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.repayIncMtg = mockRecord.Repayment_including_mortgage__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.segmentation = mockRecord.New_young_or_mature_to_bank__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.caivProfile = mockRecord.Customer_CAIV_Profile_classification__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.pdScore = mockRecord.Probability_of_default__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.annualCTO = mockRecord.Annual_credit_turnover__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.barclaysStartDate = mockRecord.Bank_relationship_start_date__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.commercialDelphiScore = mockRecord.Commercial_Delphi_Score__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.delphiBand = mockRecord.Delphi_Band__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.delphiFailureOdds = mockRecord.Delphi_Failure_Odds__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.numberCCJsLast12Months = mockRecord.Total_no_Comm_CCJs_12_months_old__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.numberCCJs13To24 = mockRecord.Total_no_Comm_CCJs_13_24_mts_old__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.nlBatchBureauNumberCCJs = mockRecord.Total_NLTD_Comm_CCJs_6_years_old__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.pccmSMReleaseDate = mockRecord.SM_release_version_date_from_PCCM__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.pccmSMReleaseNumber = string.valueof(mockRecord.SM_release_version_number_from_PCCM__c); 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.pccmRunDate = mockRecord.PCCM_run_date__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.pccmSegmentation6 = mockRecord.Segmentation_based_on_Risk_Grade__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.finalLimitBPAL = string.valueof(mockRecord.Final_BPAL_limit_from_batch_PCCM__c); 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.xrSMReleaseNumber = mockRecord.SM_release_version_number_for_XR__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.xrSMReleaseDate = mockRecord.Segmentation_based_on_Risk_Grade_for_XR__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.xrSegmentation6 = mockRecord.SM_release_version_date_for_XR_products__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.indicatorForWaterfall = mockRecord.Indicator_for_waterfall_Old_New__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.odBpalLimit = mockRecord.OD_BPAL_limit__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.totalUnsecuredLimit = mockRecord.Total_unsecured_limit__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.smOutput.bannerLimit = mockRecord.Banner_limit__c; 
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo = new CG_INT_BBAssistedLendingResponseWrapper.DecisionInfo();
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision = new CG_INT_BBAssistedLendingResponseWrapper.CreditDecision();
+            PricingWrapperRecord.data.Attributes.processResponse.creditDecision = new CG_INT_BBAssistedLendingResponseWrapper.CreditDecision();
+            
+            
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.consumerBureauId = mockRecord.eBDR_reference__c;                
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.decisionDate = string.valueof(mockRecord.Credit_Decision_Date__c);
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.decision = mockRecord.Auto_Decision_Credit__c; 
+            
+            PricingWrapperRecord.data.Attributes.processResponse.creditDecision.consumerBureauId = mockRecord.eBDR_reference__c;                
+            PricingWrapperRecord.data.Attributes.processResponse.creditDecision.decisionDate = string.valueof(mockRecord.Credit_Decision_Date__c);
+            PricingWrapperRecord.data.Attributes.processResponse.creditDecision.decision = mockRecord.Auto_Decision_Credit__c;             
+            PricingWrapperRecord.data.Attributes.processResponse.creditDecision.policyRules = new List<CG_INT_BBAssistedLendingResponseWrapper.PolicyRules>();
+            
+            PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.policyRules = new List<CG_INT_BBAssistedLendingResponseWrapper.PolicyRules>();
+            for(integer i=1;i<=20;i++){
+                CG_INT_BBAssistedLendingResponseWrapper.PolicyRules policyRule = new CG_INT_BBAssistedLendingResponseWrapper.PolicyRules();
+                if(mockRecord.get('Reason_' + i + '_CR__c') != null && mockRecord.get('Reason_' + i + '_CR__c') != ''){
+                    policyRule.ruleDescription = string.valueOf(mockRecord.get('Reason_' + i + '_CR__c'));
+                }
+                pricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.policyRules.add(policyRule);
+                pricingWrapperRecord.data.Attributes.processResponse.creditDecision.policyRules.add(policyRule);
+            }
+            
+            //need to be think
+            PricingWrapperRecord.data.Attributes.processResponse.fraudDecision = new CG_INT_BBAssistedLendingResponseWrapper.FraudDecision();
+            
+            PricingWrapperRecord.data.Attributes.processResponse.fraudDecision.fraudSystemId = mockRecord.Fraud_SystemId__c;                
+            PricingWrapperRecord.data.Attributes.processResponse.fraudDecision.decision = mockRecord.Auto_Decision_Central_Refer__c; 
+            
+            PricingWrapperRecord.data.Attributes.processResponse.fraudDecision.reasons = new List<CG_INT_BBAssistedLendingResponseWrapper.Reasons>();
+            for(integer i=1;i<=20;i++){
+                CG_INT_BBAssistedLendingResponseWrapper.Reasons policyRule = new CG_INT_BBAssistedLendingResponseWrapper.Reasons();
+                if(mockRecord.get('Reason_' + i + '__c') != null && mockRecord.get('Reason_' + i + '__c') != ''){
+                    policyRule.description = string.valueOf(mockRecord.get('Reason_' + i + '__c'));
+                }
+                pricingWrapperRecord.data.Attributes.processResponse.fraudDecision.Reasons.add(policyRule);
+                
+                
+                if(mockRecord.Mock_Risk_Grade_For_Organisation__c != null ){
+                    PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.creditDecision.riskGrade = Integer.valueof(mockRecord.Mock_Risk_Grade_For_Organisation__c);
+                    
+                }
+                PricingWrapperRecord.data.Attributes.processResponse.decisionInfo.quoteDetails = new List<CG_INT_BBAssistedLendingResponseWrapper.QuoteDetails>();
+                if(quoteDetailRecords!= null && !quoteDetailRecords.isEmpty()){    
+                    
+                    for(CG_Mock_Quote_Response_Table__c quoteMockRecord : quoteDetailRecords){
+                        CG_INT_BBAssistedLendingResponseWrapper.QuoteDetails quoteDetailRecord = new CG_INT_BBAssistedLendingResponseWrapper.QuoteDetails();
+                        quoteDetailRecord.facilitydetailId = quoteMockRecord.Loan__c;
+                        CG_INT_BBAssistedLendingResponseWrapper.PricingDetails pricingDetailsRecord = new  CG_INT_BBAssistedLendingResponseWrapper.PricingDetails();
+                        pricingDetailsRecord.overallRate = string.valueof(quoteMockRecord.Margin_Rate__c);
+                        pricingDetailsRecord.totalFeeValue = string.valueof(quoteMockRecord.Mock_Discretion_Product_Fee__c);
+                        pricingDetailsRecord.costOfFunds = string.valueof(quoteMockRecord.Fixed_Rate_Cost_of_Funds__c);
+                        pricingDetailsRecord.boeRate = string.valueof(quoteMockRecord.Base_Rate__c);
+                        pricingDetailsRecord.totalRate = string.valueof(quoteMockRecord.Total_Rate__c);
+                        
+                        quoteDetailRecord.pricingDetails = pricingDetailsRecord;
+                        
+                        CG_INT_BBAssistedLendingResponseWrapper.RepaymentProfile repaymentProfileRecord = new  CG_INT_BBAssistedLendingResponseWrapper.RepaymentProfile();
+                        repaymentProfileRecord.loanRepaymentDetails = new CG_INT_BBAssistedLendingResponseWrapper.LoanRepaymentDetails();
+                        repaymentProfileRecord.loanRepaymentDetails.annualPercentageRate = string.valueof(quoteMockRecord.APR__c);
+                        
+                        repaymentProfileRecord.loanRepaymentDetails.balloonRepayAmount = new CG_INT_BBAssistedLendingResponseWrapper.BalloonRepayAmount();
+                        if(quoteMockRecord.TotalRepayment_Amount__c != null){
+                            repaymentProfileRecord.loanRepaymentDetails.repaymentAmount = new CG_INT_BBAssistedLendingResponseWrapper.BalloonRepayAmount();
+                            repaymentProfileRecord.loanRepaymentDetails.repaymentAmount.amount = string.valueof(quoteMockRecord.TotalRepayment_Amount__c);
+                        }
+                        
+                        quoteDetailRecord.RepaymentProfile = repaymentProfileRecord;
+                        pricingWrapperRecord.data.Attributes.processResponse.decisionInfo.quoteDetails.add(quoteDetailRecord);
+                    }
+                }
+                finalPricingWrapperRecord.add(PricingWrapperRecord);                             
+            }                         		
+            
+        }        
+    }
+    /**
+*  Description    Method to get retail wholesale proposed classification for opportunity mock request
+*  @name          getRWMCalculationsOpp
+*  @param 		  string opportunityId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/ 
+    public static CG_INT_APIService.Response getRWMCalculationsOpp(String opportunityId){
+        return null;
+    }
+     /**
+*  Description    Method to get retail wholesale proposed classification for credit app mock request
+*  @name          getRWMCalculationsCA
+*  @param 		  string creditAppId
+*  @return 		  CG_INT_APIService.Response
+*  @throws exception No
+*/ 
+    public static CG_INT_APIService.Response getRWMCalculationsCA(String creditAppId){
+        RWMBBAssistedResponseWrapper.RetailWholesaleMarker retailWholesaleProposed = new RWMBBAssistedResponseWrapper.RetailWholesaleMarker();
+        retailWholesaleProposed.proposed='R';        
+        
+        //repaymentWrapperRecord.data.Attributes.processResponse.facilityDetail = facilitydetailList;
+        
+        String mockResponse = JSON.serialize(retailWholesaleProposed); 
+        
+        CG_INT_APIService.Response propsoedResponse = new CG_INT_APIService.Response('', true, '');
+        propsoedResponse.jsonResponse =JSON.serialize(retailWholesaleProposed);
+        
+        if(mockResponse == null || mockResponse == ''){
+            propsoedResponse.errorMessage = genericErrorMessage;
+        }
+        if(mockResponse != null && mockResponse != ''){ 
+            propsoedResponse.isSuccess= true;
+        }
+        System.debug('###mockResponse'+mockResponse);
+        System.debug('###propsoedResponse'+propsoedResponse);
+        return propsoedResponse;
+        
+       // return null;
+    }
+    
+}

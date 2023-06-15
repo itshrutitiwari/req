@@ -1,0 +1,681 @@
+/**
+@Author      Sudheer Kumar Basani
+@name        CG_CMP_CMPController
+@CreateDate  06/05/2020
+@Description Apex class for callout 
+@Version     <1.0>
+@reference 
+*/
+public with sharing class CG_CMP_CMPService { 
+    //Public variables
+    public static Map<String, Object> intServiceResponse;  
+    public static Boolean isMockResponse=false;
+    public static String apiName;
+    public static String recordId; 
+    // btCode,legalStatus used for pricing when called from BTScreen
+    public static String btCode;
+    public static String legalStatus;
+    public static boolean isTrainingMode = false;
+    public static ATHN_User_Group__c userGroupSetting;
+    
+    static
+    {
+        if(!test.isRunningTest()){
+            ATH_Training_Mode__mdt trainingMode  = ATH_Util.getTrainingSetting(RIDConstants.is_Training_Mode);
+            if(trainingMode != null && trainingMode.Training_Mode__c != null){
+                isTrainingMode= Boolean.valueof(trainingMode.Training_Mode__c);
+            } 
+        }       
+        
+    }
+    /**
+*  Description    Method to get API Service response.
+*  @name          getAPIServiceResponse   
+*  @param 		  String cmpAPIName,String cmpRecordId,String cmpBTCode,String cmpBTLegalStatus
+*  @return 		  map<string,Object>
+*  @throws exception Yes
+*/          
+    public static map<string,Object> getAPIServiceResponse(String cmpAPIName,String cmpRecordId,String cmpBTCode,String cmpBTLegalStatus){
+        apiName=cmpAPIName;
+        recordId=cmpRecordId;
+        // only for Pricing call 
+        btCode=cmpBTCode;
+        legalStatus=cmpBTLegalStatus;
+        CG_INT_APIService service = new CG_INT_APIService();
+        CG_INT_APIService.Response intResponse ;
+        CG_INT_APIService.Request intRequest;
+        User userInfo=[select id,User_Group__c,profile.name from user where id=:UserInfo.getUserId()];
+        if(userInfo.profile.name!='System Administrator' || userInfo.profile.name=='System Administrator'){
+            if(userInfo.User_Group__c!=null){
+                userGroupSetting=CG_INT_Validations.getUserGroup(userInfo.User_Group__c);
+                if(userGroupSetting!=null){ 
+                    // constrcut intRequest from constructINTServiceReqBody if no errors else errormap
+                    Map<String,Object> intRequestMap=constructINTServiceReqBody();
+                    
+                    if(intRequestMap.containsKey('success')){
+                        intRequest=(CG_INT_APIService.Request )intRequestMap.get('success');
+                        if(isTrainingMode || Test.isRunningTest()){
+                            if(apiName =='businessCustomers'){                            
+                                string cusotmerid =  intRequest.custORappId;                            
+                                intResponse=nCinoBusinessCusotmerDetailClass.getAllBusinessCustomerRecords(cusotmerid); 
+                            }else if(apiName =='businessTargetters'){
+                                intResponse = BusinessTargetterMockResponse.getAllBusinessTargetterRecords(cmpRecordId);
+                            }else if(apiName =='lendingPrices'){
+                                intResponse = BusinessTargetterMockResponse.getAllPricingRecords(cmpRecordId);
+                            }else if(apiName =='lendingRepayments'){
+                                intResponse = BusinessTargetterMockResponse.getAllLendingRepayments(cmpRecordId);
+                            }else if(apiName =='lendingDecisions'){
+                                intResponse = BusinessTargetterMockResponse.getAllDecisionRecords(cmpRecordId);
+                            }else if(apiName == 'updateLendingDecisions' || apiName == 'updateDeclineDecisions' || apiName == 'updateWithdrawDecisions'){
+                                intResponse = BusinessTargetterMockResponse.getUpdateDecisionMockResponse(cmpRecordId);
+                            }else if(apiName == 'lendingFulfilmentCases'){
+                                intResponse =  BusinessTargetterMockResponse.getlendingFulfilmentCasesResponse(cmpRecordId);       
+                            }else if(apiName == 'rwmCalculationsOpp'){
+                                intResponse =  BusinessTargetterMockResponse.getRWMCalculationsOpp(cmpRecordId);
+                            }else if(apiName == 'rwmCalculationsCA'){
+                                intResponse =  BusinessTargetterMockResponse.getRWMCalculationsCA(cmpRecordId);
+                            }
+                            
+                        } 
+                        else{
+                            intResponse=service.invokeAPI(intRequest);
+                        }
+                    }
+                    else if(intRequestMap.containsKey('nonRDSTypeApp')){
+                        String jsonNonRDSResponse='{  "data": {    "type": "UpdateStatus",    "attributes": {           "nonRDSTypeApp": "RDS Call not required"      }    }  }';
+                        intResponse=new CG_INT_APIService.Response(jsonNonRDSResponse,true,null);                    
+                    }
+                    else{
+                        intServiceResponse= (map<string,Object>)JSON.deserializeUntyped('{"errorMessage":"'+intRequestMap.get('error') +'"}');
+                    }
+                }
+                else{
+                    intServiceResponse= (map<string,Object>)JSON.deserializeUntyped('{"errorMessage":"The role profile does not allow  for the application"}');
+                }
+            }
+            else{
+                intServiceResponse= (map<string,Object>)JSON.deserializeUntyped('{"errorMessage":"Please select the role profile"}');
+            }
+        }
+        else{
+            intServiceResponse= (map<string,Object>)JSON.deserializeUntyped('{"errorMessage":"The role profile does not allow  for the application"}');
+        }
+        
+        if(intResponse!=null){
+            intServiceResponse=processINTServiceResponse(intResponse);
+        }
+        return intServiceResponse;
+    }
+    /**
+*  Description    Method to process API Service response.
+*  @name          processINTServiceResponse   
+*  @param 		  CG_INT_APIService.Response intResponse
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/          
+    public static map<string,Object> processINTServiceResponse(CG_INT_APIService.Response intResponse){
+        Map<String, Object> processedResponseMap = new Map<String, Object>();
+        Map<String, String> processedAPIMap = new Map<String, String>();
+        Map<String, Object> dataNode = new Map<String,Object>();
+        Map<String,Object> attributeNode = new Map<String,Object>();
+        Map<String,Object> localityResolutionNode = new Map<String,Object>();
+        Map<String,Object> warningNode = new Map<String,Object>();
+        List<Object> errorCodeNode = new List<Object>();
+        List<String> localityResolution=new List<String>();
+        if(intResponse.isSuccess&&intResponse.jsonResponse!=null)
+        {
+            if(apiName=='businessTargetters'){
+                processedResponseMap= (map<string,Object>)JSON.deserializeUntyped(intResponse.jsonResponse);                
+                
+                if(processedResponseMap.containskey('data')){
+                    dataNode = (Map<String, Object>) processedResponseMap.get('data');
+                }
+                if(!dataNode.isEmpty()&&dataNode.containskey('attributes')){
+                    attributeNode = (Map<String,Object>)dataNode.get('attributes');
+                }
+                if(!attributeNode.isEmpty()&&attributeNode.containskey('localityResolution')){
+                    localityResolutionNode = (Map<String,Object>)attributeNode.get('localityResolution');
+                }
+                if(!localityResolutionNode.isEmpty()&&localityResolutionNode.containskey('warning')){
+                    warningNode = (Map<String,Object>)localityResolutionNode.get('warning');
+                }
+                if(!warningNode.isEmpty()&&warningNode.containskey('errorCode')){
+                    errorCodeNode = ( List<Object>)warningNode.get('errorCode');
+                }
+                
+                Map<String,String> warningMap=CG_INT_Utility.getWarningCodeMap();
+                if(!errorCodeNode.isEmpty()){
+                    for(Object obj:errorCodeNode){
+                        if(warningMap.containsKey(String.valueOf(obj))){
+                            localityResolution.add(obj+':'+warningMap.get(String.valueOf(obj)));
+                        }
+                    }}            
+                // get business details from Org
+                String businessDetails= new CG_INT_BBAssistedLendingAPI().getBusinessDetails(recordId);
+                processedResponseMap.put('businessDetails',businessDetails);
+                processedResponseMap.put('localityResolution',localityResolution);
+            }
+            else {
+                // call specific method to persist                
+                processedAPIMap=persistResponse(intResponse.jsonResponse);
+                if(processedAPIMap.containsKey('success'))
+                    processedResponseMap.put('successMessage',processedAPIMap.get('success'));
+                else
+                    processedResponseMap.put('errorMessage',processedAPIMap.get('error'));
+            }
+        }
+        else if (!intResponse.isSuccess&&intResponse.errorMessage!=null){
+            
+            if(apiName=='businessTargetters'){
+                processedResponseMap.put('btErrorMessage',intResponse.errorMessage);
+            }
+            else{
+                processedResponseMap.put('errorMessage',intResponse.errorMessage);
+            }
+        }
+        return processedResponseMap;
+    }
+    /**
+*  Description    Method to Consturct service req body.
+*  @name          constructINTServiceReqBody   
+*  @param 		  No paramater
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/          
+    public static map<string,Object> constructINTServiceReqBody(){
+        map<string,Object> intRequestMap=new map<string,Object>();
+        Map<String,Object> requestBodyMap=new Map<String,Object>();
+        Boolean isValid=true;
+        String validationError;
+        String jsonRequest;
+        String httpMethod;
+        String custORappId;
+        String reqAPiName=apiName;
+        Boolean isNonRDSType=false;
+        switch on apiName {
+            when 'businessCustomers' {
+                if(userGroupSetting.Retrieve_Customer_Data__c){
+                    httpMethod='GET';
+                    List<LLC_BI__Product_Package__c> creditApp=[select id,LLC_BI__Account__c,LLC_BI__Account__r.Customer_ID__c,Application_Purpose__c,RWM_Golden_Source__c
+                                                                from LLC_BI__Product_Package__c where id=:recordId];
+                    if(creditApp[0].LLC_BI__Account__c!=null){
+                        
+                        if(creditApp[0].LLC_BI__Account__r.Customer_ID__c!=null){
+                            custORappId=creditApp[0].LLC_BI__Account__r.Customer_ID__c;
+                            jsonRequest='{'+
+                                '"data": {'+
+                                '"type": "creditAssessment",'+
+                                '"attributes": {'+
+                                '"businessCustomerID": "'+custORappId+'"'+
+                                
+                                '}'+
+                                '}'+
+                                '}';
+                        }
+                        else{
+                            isValid=false;
+                            validationError='No customer id available for credit application';
+                        }
+                    }
+                    else{
+                        isValid=false;
+                        validationError='No customer available for credit application';
+                    }
+                    // 9A=Other and added 1A = NewtoBank as fix for GRPCONLEND-22892
+                    if(creditApp[0].Application_Purpose__c!=null &&
+                       (creditApp[0].Application_Purpose__c=='1A' || creditApp[0].Application_Purpose__c=='9A')){
+                           isValid=false;   
+                           validationError='Retrieve Customer data is not applicable for application purpose Other or New to Bank';                        
+                       }}
+                else{
+                    isValid=false;
+                    validationError='The role profile does not allow retrieval of customer data for the application';
+                }
+            }
+            when 'lendingPrices','lendingDecisions' {
+                httpMethod='POST';
+                requestBodyMap=new CG_INT_AutoDecisioningAPI().constructPricingDecisionRequest(recordId,apiName,btCode,legalStatus);
+                
+                if(requestBodyMap.containsKey('btApiName')&&requestBodyMap.get('btApiName')!=null){
+                    reqAPiName='businessTargetters';
+                    apiName='businessTargetters';
+                }
+                if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null){
+                    jsonRequest=(String)requestBodyMap.get('success');
+                    custORappId=(String)requestBodyMap.get('creditAppId');
+                }
+                else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                    isvalid=false;
+                    validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                }
+            }
+            when 'lendingRepayments' {
+                if(userGroupSetting.Calculate_Repayment__c){
+                    httpMethod='POST';
+                    requestBodyMap=new CG_INT_BBAssistedLendingAPI().constructRepaymentRequest(recordId);
+                    if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null)
+                        jsonRequest=(String)requestBodyMap.get('success');
+                    else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                        isvalid=false;
+                        validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                        
+                    }}
+                else{
+                    isValid=false;
+                    validationError='The role profile does not allow calculating repayments for the application';
+                }
+            }
+            when 'updateLendingDecisions','updateDeclineDecisions','updateWithdrawDecisions' {
+                httpMethod='PUT';
+                reqAPiName='lendingDecisions';
+                requestBodyMap=new CG_INT_BBAssistedLendingAPI().constructUpdateDecisionRequest(recordId,apiName);
+                if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null){
+                    jsonRequest=(String)requestBodyMap.get('success');
+                    custORappId=(String)requestBodyMap.get('creditAppId');
+                }
+                else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                    isvalid=false;
+                    validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                    
+                }
+                else if(requestBodyMap.containsKey('nonRDSTypeApp')){
+                    isNonRDSType=true;
+                }
+            }
+            when 'lendingFulfilmentCases' {
+                if(userGroupSetting.Auto_Load__c){
+                    httpMethod='POST';
+                    requestBodyMap=new CG_INT_BBAssistedLendingAPI().constructFulfilmentCaseRequest(recordId);
+                    if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null){
+                        jsonRequest=(String)requestBodyMap.get('success');
+                    }
+                    else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                        isvalid=false;
+                        validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                    }
+                }
+                else{
+                    isValid=false;
+                    validationError='The role profile does not allow auto load for the application';
+                }
+            }
+            when 'rwmCalculationsOpp' {
+                httpMethod='POST';
+                requestBodyMap=new RWMCalculationsAPI().constructRWMCalcOpportunityRequest(recordId,apiName,btCode,legalStatus);
+                
+                if(requestBodyMap.containsKey('btApiName')&&requestBodyMap.get('btApiName')!=null){
+                    reqAPiName='businessTargetters';
+                    apiName='businessTargetters';
+                }
+                if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null){
+                    jsonRequest=(String)requestBodyMap.get('success');
+                    custORappId=(String)requestBodyMap.get('opportunityId');
+                }
+                else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                    isvalid=false;
+                    validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                }
+            }
+            when 'rwmCalculationsCA' {
+                httpMethod='POST';
+                requestBodyMap=new RWMCalculationsAPI().constructRWMCalcCreditAppRequest(recordId,apiName,btCode,legalStatus);
+                
+                if(requestBodyMap.containsKey('btApiName')&&requestBodyMap.get('btApiName')!=null){
+                    reqAPiName='businessTargetters';
+                    apiName='businessTargetters';
+                }
+                if(requestBodyMap.containsKey('success')&&requestBodyMap.get('success')!=null){
+                    jsonRequest=(String)requestBodyMap.get('success');
+                    custORappId=(String)requestBodyMap.get('creditAppId');
+                }
+                else if(requestBodyMap.containsKey('error')&&requestBodyMap.get('error')!=null){
+                    isvalid=false;
+                    validationerror=CG_INT_Utility.getListAsString((List<String>)requestBodyMap.get('error'),true);
+                }
+            }
+            
+            
+        }
+        if(isValid){
+            if(isNonRDSType){
+                intRequestMap.put('nonRDSTypeApp','RDS Call not required');
+            }
+            else{
+                CG_INT_APIService.Request req=new CG_INT_APIService.Request(recordId,jsonRequest,reqAPiName,custORappId,httpMethod);
+                intRequestMap.put('success',req);
+            }
+        }
+        else{
+            string errorMsg=validationError.replace('"',''); 
+            intRequestMap.put('error',errorMsg);
+        }
+        // if all validations failed then jsonRequest in map or errormessage
+        return intRequestMap;
+    }
+    /**
+*  Description    Method to persist API Service response.
+*  @name          persistResponse   
+*  @param 		  String jsonMessage
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/          
+    public static map<string,String> persistResponse(String jsonMessage){
+        Map<String, Object> resMap= (map<string,Object>)JSON.deserializeUntyped(jsonMessage);
+        Map<String, Object> dataNode = (Map<String, Object>) resMap.get('data');
+        Map<String,Object> attributeNode = (Map<String,Object>)dataNode.get('attributes');
+        map<String,String> processedAPIMap=new map<String,String>();
+        
+        switch on apiName {
+            when 'businessCustomers' {
+                processedAPIMap=    persistBusinessCustomerDetails(attributeNode);
+            }
+            when 'lendingPrices' {
+                processedAPIMap=    persistPricingDetails(jsonMessage);
+            }
+            when 'lendingRepayments' {
+                processedAPIMap=    persistRepaymentDetails(jsonMessage);
+            }
+            when 'lendingDecisions' {
+                processedAPIMap=    persistDecisionDetails(jsonMessage);
+            }
+            when 'updateLendingDecisions','updateDeclineDecisions','updateWithdrawDecisions' {
+                processedAPIMap=    persistUpdatedDecisionDetails(attributeNode);
+            }
+            when 'lendingFulfilmentCases' {
+                processedAPIMap=    persistFulfilmentCaseDetails(attributeNode);
+            }
+            //Added for the story BUKBBSF-29829
+            when 'rwmCalculationsCA'{
+               processedAPIMap=    persistRWMCalculations(jsonMessage);
+
+            }             
+        }
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process  Business customer details from API Service response.
+*  @name          persistBusinessCustomerDetails   
+*  @param 		  map<string,Object> attributeNode
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistBusinessCustomerDetails(map<string,Object> attributeNode){
+        String isBukBIRiskGrade;
+        map<String,String> processedAPIMap=new map<String,String>();
+        LLC_BI__Product_Package__c creditApp=[select id,BPAL_Limit__c,Application_Entity__c,RWM_Golden_Source__c,
+                                              (select id,LLC_Bi__Product_Type__c from LLC_BI__Loan_Facilities__r) 
+                                              from LLC_BI__Product_Package__c where id=:recordId];
+        if(!creditApp.LLC_BI__Loan_Facilities__r.isEmpty())
+        {   isBukBIRiskGrade='BUK';
+         for(LLC_BI__Loan__c loan:creditApp.LLC_BI__Loan_Facilities__r){
+             if(loan.LLC_BI__Product_Type__c=='Cross Referral Settlement Limit'){
+                 isBukBIRiskGrade='BI';
+                 break;
+             }
+         }
+        }
+        else if(creditApp.Application_Entity__c!=null){
+            if(creditApp.Application_Entity__c=='BUK')
+                isBukBIRiskGrade='BUK';
+            else
+                isBukBIRiskGrade='BI';
+        }
+        if(!attributeNode.isEmpty()){
+            Map<String, Object> markerNode = (Map<String, Object>) attributeNode.get('marker');
+            Map<String, Object> creditRiskDetail = (Map<String, Object>) attributeNode.get('creditRiskDetail');
+            Map<String, Object> preAssessedLimitNode = (Map<String, Object>) attributeNode.get('preAssessedLimit');
+            creditApp.Date_of_Previous_CCR_Call__c=datetime.now();  
+            if(markerNode!=null&&!markerNode.isEmpty()){
+                Map<String, Object> markerNodeInstance = (Map<String, Object>) markerNode;
+                if(markerNodeInstance != null ){
+                    // store code only start
+                    if(markerNodeInstance.containskey('badAndDoubtfulMarker')) {
+                        Map<String, Object>badAndDoubtfulMarkerMap =(Map<String, Object>) markerNodeInstance.get('badAndDoubtfulMarker');
+                        creditApp.Bad_And_Doubtful_Marker__c=CG_INT_Utility.getCodeAsValue(badAndDoubtfulMarkerMap.get('code'));
+                    }
+                    if(markerNodeInstance.containskey('watchlistMarker')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('watchlistMarker');
+                        creditApp.Watchlist_Marker__c=CG_INT_Utility.getValue(compositeMandateMap.get('code'));
+                    }
+                    // BUKBBSF-29806 - Retrieving Customer Retail Wholesale Marker
+                    if(markerNodeInstance.containskey('retailWholesaleMarker')) {
+                        Map<String, Object> retailWholesaleMarker =(Map<String, Object>) markerNodeInstance.get('retailWholesaleMarker');
+                        String rwmCode = '';
+                        String codeValue = CG_INT_Utility.getValue(retailWholesaleMarker.get('code'));
+                        if(codeValue!= NULL && codeValue.containsIgnoreCase('R')){
+                            rwmCode = 'R';
+                        } else if(codeValue!= NULL && codeValue.containsIgnoreCase('W')){
+                            rwmCode = 'W';
+                        } else {
+                            rwmCode = NULL;
+                        }
+                        creditApp.RWM_Golden_Source__c = rwmCode;
+                    }
+                    // store code only end
+                    // store decode only start
+                    if(markerNodeInstance.containskey('compositeMandate')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('compositeMandate');
+                        creditApp.Composite_Mandate__c=CG_INT_Utility.getValue(compositeMandateMap.get('decode'));
+                    }
+                    if(markerNodeInstance.containskey('insolvencyMarker')) {
+                        Map<String, Object>insolvencyMarkerMap =(Map<String, Object>) markerNodeInstance.get('insolvencyMarker');
+                        creditApp.Insolvency_Marker__c=CG_INT_Utility.getValue(insolvencyMarkerMap.get('decode'));
+                    }
+                    if(markerNodeInstance.containskey('importExportMarker')) {
+                        Map<String, Object>importExportMarkerMap =(Map<String, Object>) markerNodeInstance.get('importExportMarker');
+                        creditApp.Import_Export_Marker__c=CG_INT_Utility.getValue(importExportMarkerMap.get('decode'));
+                    }                    
+                    if(markerNodeInstance.containskey('forebearanceMarker')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('forebearanceMarker');
+                        creditApp.Forebearance_Marker__c=CG_INT_Utility.getValue(compositeMandateMap.get('decode'));
+                    }
+                    if(markerNodeInstance.containskey('hgeMarker')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('hgeMarker');
+                        creditApp.HGE_Marker__c=CG_INT_Utility.getValue(compositeMandateMap.get('decode'));
+                    }
+                    // store decode only end
+                    // store yes/no logic start
+                    if(markerNodeInstance.containskey('mcobMarker')) {
+                        Map<String, Object>mcobMarkerMap =(Map<String, Object>) markerNodeInstance.get('mcobMarker');
+                        String value='';
+                        String code=CG_INT_Utility.getValue(mcobMarkerMap.get('code'));
+                        if(code=='E02'){
+                            value='Yes';
+                        }
+                        else{
+                            value='No';
+                        }
+                        creditApp.MCOB_Marker__c=value; 
+                        
+                    }
+                    if(markerNodeInstance.containskey('collectionMarker')) {
+                        Map<String, Object>collectionMarkerMap =(Map<String, Object>) markerNodeInstance.get('collectionMarker');
+                        String value='';
+                        String code=CG_INT_Utility.getValue(collectionMarkerMap.get('code'));
+                        if(code=='1TM'){
+                            value='Yes';
+                        }
+                        else{
+                            value='No';
+                        }
+                        creditApp.Collection_Marker__c=value;
+                    }
+                    if(markerNodeInstance.containskey('barclaycardCollectionsMarker')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('barclaycardCollectionsMarker');
+                        String value='';
+                        String code=CG_INT_Utility.getValue(compositeMandateMap.get('code'));
+                        if(code=='X03'){
+                            value='Yes';
+                        }
+                        else{
+                            value='No';
+                        }
+                        creditApp.Barclaycard_Collections_Marker__c=value;
+                    }
+                    // store yes/no logic end
+                    // Indicates if customer is marked as Legacy Corporate Customer. This is used to derive Jade flag.
+                    if(markerNodeInstance.containskey('lccMarker')) {
+                        Map<String, Object>compositeMandateMap =(Map<String, Object>) markerNodeInstance.get('lccMarker');
+                        String value='';
+                        String code=CG_INT_Utility.getValue(compositeMandateMap.get('code'));
+                        if(code=='LCC'){
+                            value='Y';
+                        }
+                        else{
+                            value='N';
+                        }
+                        creditApp.Jade_Flag__c=value;
+                    } 
+                    if(markerNodeInstance.containskey('currentAccountCount')) {
+                        String code=CG_INT_Utility.getValue(markerNodeInstance.get('currentAccountCount'));
+                        if(code!=null){
+                            
+                            creditApp.Current_Account_Count__c=Integer.valueOf(code);
+                        }
+                    }
+                    if(markerNodeInstance.containskey('secureBySfgFlag')) {
+                        Boolean value=false;
+                        String code=CG_INT_Utility.getValue(markerNodeInstance.get('secureBySfgFlag'));
+                        if(code=='0'||code=='1'){
+                            value=true;
+                        }                        
+                        creditApp.Secure_By_Sfg_Flag__c=value;                        
+                    }
+                }
+            }
+            if(creditRiskDetail!=null&&!creditRiskDetail.isEmpty()){
+                Map<String, Object> creditRiskDetailInstance = (Map<String, Object>) creditRiskDetail;
+                if(creditRiskDetailInstance != null){
+                    if(creditRiskDetailInstance.containskey('bukAcquisitionRiskGrade')) {
+                        creditApp.BUK_Risk_Grade__c=CG_INT_Utility.getStringAsDecimal(creditRiskDetailInstance.get('bukAcquisitionRiskGrade')); 
+                        creditApp.BUK_Risk_Grade_Date__c=CG_INT_Utility.getStringAsDate(creditRiskDetailInstance.get('bukAcquisitionRiskGradeDateTime'));                         
+                    }
+                    if(creditRiskDetailInstance.containskey('biRiskGrade')) {
+                        creditApp.BI_Risk_Grade__c=CG_INT_Utility.getStringAsDecimal(creditRiskDetailInstance.get('biRiskGrade'));
+                        creditApp.BI_Risk_Grade_Date__c=CG_INT_Utility.getStringAsDate(creditRiskDetailInstance.get('biRiskGradeTime'));                         
+                    }
+                    if(isBukBIRiskGrade=='BUK')
+                        creditApp.Risk_Grade__c=creditApp.BUK_Risk_Grade__c;
+                    else if(isBukBIRiskGrade=='BI')
+                        creditApp.Risk_Grade__c=creditApp.BI_Risk_Grade__c;
+                }
+                
+            }
+            if(preAssessedLimitNode!=null&&!preAssessedLimitNode.isEmpty()){
+                Map<String, Object> preAssessedLimitNodeInstance = (Map<String, Object>) preAssessedLimitNode;
+                if(preAssessedLimitNodeInstance != null){ 
+                    
+                    creditApp.BPAL_Date__c=CG_INT_Utility.getStringAsDate(preAssessedLimitNodeInstance.get('bpalDateTime')); 
+                    if(preAssessedLimitNodeInstance.containskey('loanFinalLimit' )) 
+                        creditApp.Loan_Final_Limit__c=CG_INT_Utility.getStringAsDecimal(preAssessedLimitNodeInstance.get('loanFinalLimit'));   
+                    if(preAssessedLimitNodeInstance.containskey('xrFinalLimit' )) 
+                        creditApp.XR_Final_Limit__c=CG_INT_Utility.getStringAsDecimal(preAssessedLimitNodeInstance.get('xrFinalLimit'));   
+                    if(preAssessedLimitNodeInstance.containskey('overdraftLimit' )) 
+                        creditApp.Overdraft_Limit__c=CG_INT_Utility.getStringAsDecimal(preAssessedLimitNodeInstance.get('overdraftLimit'));
+                    if(preAssessedLimitNodeInstance.containskey('finalBannerLimit' )) 
+                        creditApp.Final_Banner_Limit__c=CG_INT_Utility.getStringAsDecimal(preAssessedLimitNodeInstance.get('finalBannerLimit'));  
+                    if(isBukBIRiskGrade=='BUK')
+                        creditApp.BPAL_Limit__c=creditApp.Loan_Final_Limit__c;
+                    else if(isBukBIRiskGrade=='BI'&&creditApp.BPAL_Limit__c!=null){
+                        // commented as part of CB83 ATHN-1347
+                        creditApp.BPAL_Limit__c=null;
+                    }
+                } 
+            }
+            try{
+                update creditApp;
+                processedAPIMap.put('success','Business Customer Details Retrieved Successfully');
+                return processedAPIMap;
+            }
+            catch(Exception e){
+                processedAPIMap.put('error',e.getMessage() );
+                return processedAPIMap;
+            }
+        }
+        //perform persist logic
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process  pricing details from API Service response.
+*  @name          persistPricingDetails   
+*  @param 		  String jsonMessage
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistPricingDetails(String jsonMessage){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        // processedAPIMap=new CG_INT_BBAssistedLendingAPI().persistPricingDetails(jsonMessage,recordId,btCode,legalStatus);
+        processedAPIMap=new CG_INT_AutoDecisioningAPI().persistPricingDetails(jsonMessage,recordId,btCode,legalStatus);
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process  repayment details from API Service response.
+*  @name          persistRepaymentDetails   
+*  @param 		  String jsonMessage
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistRepaymentDetails(String jsonMessage){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        processedAPIMap=new CG_INT_BBAssistedLendingAPI().persistRepaymentDetails(jsonMessage,recordId);
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process  decision details from API Service response.
+*  @name          persistDecisionDetails   
+*  @param 		  String jsonMessage
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistDecisionDetails(String jsonMessage){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        processedAPIMap=new CG_INT_AutoDecisioningAPI().persistDecisionDetails(jsonMessage,recordId);
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process  updated decision details from API Service response.
+*  @name          persistUpdatedDecisionDetails   
+*  @param 		  map<string,Object> attributeNode
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistUpdatedDecisionDetails(map<string,Object> attributeNode){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        processedAPIMap=new CG_INT_BBAssistedLendingAPI().persistUpdatedDecisionDetails(attributeNode,recordId,apiName);
+        return processedAPIMap;
+    }
+    /**
+*  Description    Method to Process fulfilment details from API Service response.
+*  @name          persistFulfilmentCaseDetails   
+*  @param 		  map<string,Object> attributeNode
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistFulfilmentCaseDetails(map<string,Object> attributeNode){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        processedAPIMap=new CG_INT_BBAssistedLendingAPI().persistFulfilmentCaseDetails(attributeNode,recordId);
+        return processedAPIMap;
+    }    
+    
+//Added a new method for the story BUKBBSF-29829    
+       /**
+*  Description    Method to Process  RWM details from API Service response.
+*  @name          persistRWMCalculations   
+*  @param 		  String jsonMessage
+*  @return 		  map<string,Object>
+*  @throws exception No
+*/
+    public static map<string,String> persistRWMCalculations(String jsonMessage){
+        map<String,String> processedAPIMap=new map<String,String>();
+        //perform persist logic
+        processedAPIMap=new RWMCalculationsAPI().persistRWMCalculationsDetails(jsonMessage,recordId,btCode,legalStatus);
+        return processedAPIMap;
+    }
+}
+
+/**

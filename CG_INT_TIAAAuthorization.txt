@@ -1,0 +1,485 @@
+
+/**
+@Author      Sudheer Kumar Basani
+@name        CG_INT_TIAAAuthorization
+@CreateDate  05/05/2020
+@Description A class which constructs Integration  request message with TIAA acess token and other header information for different APIs.
+@Version     <1.0>
+@reference 
+*/
+public inherited sharing class CG_INT_TIAAAuthorization {
+    public class APICalloutException extends exception{}
+    
+    public static final string CONFG_CUSTOMERAPI = '';
+    private static String currentDateTime;
+    private static string apiContentType;
+    private static final String JWS_SIGN_ALGORITHM = 'RSA-SHA256';
+    // Correlation Id to be send for each request
+    private static string correlationId; 
+    private static string creditAppId; 
+    // auth token
+    private static string authToken;
+    public static User currentUser;
+    // cURRENT UsER brid
+    public static String currentUserBRID;
+    @TestVisible private static boolean useBDNAppIdforAuth;
+    // API logger instance
+    private static bar_APILogger logger;
+    // whether to log api calls or not
+    private static boolean logPayload;
+    // Auth Instance uncomment after creating custom setting
+    @TestVisible private static CG_TIAA_Setting__c authSetting;
+    private static AuthProvider authProvider;
+    // As dml is performed at the end for each api call,
+    // so whether token needs to be updated is stored as a flag
+    private static boolean updateToken = false;
+    // httprequest
+    public static HttpRequest httpRequest;
+    private static Integer authCallCount = 0;
+    // headers
+    @TestVisible  private static Map<String, String> headers;
+    private static Map<String, ath_BDN_APP_Setting__mdt> appSettingMap = new Map<String, ath_BDN_APP_Setting__mdt>();
+    
+    
+    
+    // initialize static variables
+    static{  
+        
+        Map<String, Sobject> settings = bar_CustomMetadataUtility.getAll(new ath_BDN_APP_Setting__mdt());
+        if (settings != null) {
+            for (Sobject sObj : settings.values()) {
+                ath_BDN_APP_Setting__mdt obj = (ath_BDN_APP_Setting__mdt)sObj;
+                appSettingMap.put(obj.Label, obj);
+            }
+        } 
+        
+    }
+    /**
+*  Description    Method to check logged in organization.
+*  @name          IsProductionOrg   
+*  @param 		  No parameter
+*  @return 		  Boolean
+*  @throws exception No
+*/  
+    public static Boolean IsProductionOrg() { // Method to check of environement is Production ORG or not
+        Organization org = [select IsSandbox from Organization where Id =:UserInfo.getOrganizationId()];
+        return (org.IsSandbox == true) ? false : true;
+    }
+    
+    /**
+*  Description    Method to Constructs Request Message for Business Customer API.
+*  @name          getBusinessCustomerDetails   
+*  @param 		  No parameter
+*  @return 		  Boolean
+*  @throws exception No
+*/      
+    
+    public static HttpResponse getBusinessCustomerDetails(CG_INT_APIService.Request intRequest){
+        
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get(intRequest.apiName);
+        creditAppId=intRequest.recordId;
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c); 
+        if(!IsProductionOrg()){
+            httpRequest.setHeader('test-bed', 'TBY');
+        }  
+        
+        return signAndSendRequest(appSetting,intRequest);
+    }
+    
+    /**
+*  Description    Method to Constructs Request Message for lending Prices API.
+*  @name          getPricingDetails   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getPricingDetails(CG_INT_APIService.Request intRequest){
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get('BBALD');
+        creditAppId=intRequest.recordId;
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'/lendingPrices');        
+        return signAndSendRequest(appSetting,intRequest);
+    }
+    /**
+*  Description    Method to Construct Request Message for lending Repayments API.
+*  @name          getRepaymentDetails   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getRepaymentDetails(CG_INT_APIService.Request intRequest){
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get('BBALD');
+        creditAppId=intRequest.recordId;
+        //ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get(intRequest.apiName);
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'/lendingRepayments');        
+        return signAndSendRequest(appSetting,intRequest);
+    }
+    
+    /**
+*  Description    Method to Construct Request Message for lending Decision API.
+*  @name          getDecisionDetails   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getDecisionDetails(CG_INT_APIService.Request intRequest){
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get('BBALD');
+        creditAppId=intRequest.recordId;
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'/lendingDecisions/'+intRequest.custORappId);        
+        return signAndSendRequest(appSetting,intRequest);
+    } 
+    
+    /**
+*  Description    Method to Construct Request Message for lending Fulfilment Cases API.
+*  @name          getFulfilmentCaseDetails   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getFulfilmentCaseDetails(CG_INT_APIService.Request intRequest){
+        //ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get(intRequest.apiName);
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get('BBALD');
+        creditAppId=intRequest.recordId;
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'/lendingFulfilmentCases');        
+        return signAndSendRequest(appSetting,intRequest);
+    }
+    
+    
+    /**
+*  Description    Method to Construct Request Message for Business Targetter API.
+*  @name          getBusinessTargetterDetails   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getBusinessTargetterDetails(CG_INT_APIService.Request intRequest){
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get(intRequest.apiName);
+        creditAppId=intRequest.recordId;
+        system.debug('appSetting 100=>'+appSetting);
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        // String jsonString='{"data": {"type": "businessTargetters","attributes": {"businessName": "Experian","location": {"postTown": "Nottingham","postCode": "NG801RH"},"phoneNumber": "22222548"  }}}';
+        httpRequest.setBody(intRequest.jsonRequest);
+        // httpRequest.setBody(jsonString);
+        //message.httpMethodType = intRequest.httpMethod;
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'?excludeDissolved=N&searchCorporates=Y&searchNonCorporates=Y');
+        // headers.put('API', intRequest.apiName);
+        // headers.put('x-jws-signature', signRequest(appSetting));
+        return signAndSendRequest(appSetting,intRequest);
+        
+    }
+    
+    /**
+*  Description    Method to create request message
+*  @name          createRequestMessage   
+*  @param 		  ath_BDN_APP_Setting__mdt appSetting
+*  @return 		  Void
+*  @throws exception No
+*/    
+    @TestVisible  private static void createRequestMessage(ath_BDN_APP_Setting__mdt appSetting){
+        correlationId = '';
+        correlationId = GuidUtil.NewGuid();
+        System.debug('correlationId==>'+correlationId);
+        headers = new Map<String, String>();
+        httpRequest = new HttpRequest();  
+        
+        if(authToken == null){
+            useBDNAppIdforAuth = Boolean.valueOf(appSetting.Authorize_with_BDN_APP_ID__c);
+            if(!useBDNAppIdforAuth){
+                // get token stored in custom object
+                authSetting = getIntegrationSetting(appSetting.DeveloperName);
+                
+                if (authSetting != null && authSetting.OAuth_Token_Expiry_DateTime__c > System.now()) {
+                    authToken = authSetting.OAuth_Token__c;
+                }
+                
+                else{
+                    authToken = getNewTIAAAccessToken(appSetting);
+                } 
+                if(authToken == null){
+                    throw new AuraHandledException('Failed to get access token');
+                }
+                else{
+                    headers.put('Authorization', 'Bearer '+authToken);
+                }
+                httpRequest = new HttpRequest();
+            } }
+        else{
+            headers.put('Authorization', 'Bearer '+authToken);
+        }
+        
+        headers.put('Correlation-ID', correlationId);   
+        headers.put('Content-type','application/json');  
+        headers.put('Accept', 'application/json'); 
+        headers.put('Channel-ID', 'nCINO'); 
+        //system.debug(correlationId+'htttp headers=>'+currentUser.FederationIdentifier);
+    }
+    
+    
+    /**
+*  Description    Method to create & returns new access token
+*  @name          getNewTIAAAccessToken   
+*  @param 		  ath_BDN_APP_Setting__mdt appSetting
+*  @return 		  string
+*  @throws exception No
+*/        
+    @TestVisible private static string getNewTIAAAccessToken(ath_BDN_APP_Setting__mdt appSetting){
+        String token = null;
+        List<AuthProvider> authProviderList = [select TokenUrl, consumerKey, consumerSecret, defaultScopes 
+                                               from AuthProvider 
+                                               where DeveloperName =: appSetting.Auth_Provider_Name__c];
+        if(authProviderList!=null&&!authProviderList.isEmpty()){
+            authCallCount++;
+            // headers = new Map<String, String>();
+            // headers.put('Content-Type', CG_INT_Constants.OAUTH_TOKEN_CONTENT_TYPE);
+            HttpRequest httpRequest1 = new HttpRequest();
+            httpRequest1.setEndPoint(authProviderList[0].TokenUrl);
+            httpRequest1.setMethod('POST');
+            httpRequest1.setHeader('Content-Type', 'application/x-www-form-urlencoded');
+            String body = 'client_id='+authProviderList[0].consumerKey+'&grant_type='+CG_INT_Constants.ACCESS_TOKEN_GRANT_TYPE+'&client_secret='+authProviderList[0].consumerSecret+'&scope='+authProviderList[0].defaultScopes+'';
+            httpRequest1.setBody(body);
+            System.debug('body'+httpRequest1);
+            System.debug('body_request'+body);
+            
+            //Execute web service call here     
+            Http http = new Http();
+            HTTPResponse response=new HTTPResponse();
+            try{
+             response = http.send(httpRequest1);
+            system.debug('Test'+response.getStatusCode());
+            System.debug('Test1'+response);
+            
+            if(response.getStatusCode() == CG_INT_Constants.GET_SUCCESS_STATUS_CODE){
+                Map<String, Object> authResponse = (Map<String, Object>)JSON.deserializeUntyped(response.getBody());
+                
+                System.debug('response.getBody'+response.getBody());
+                token = (String)authResponse.get('access_token');
+                Integer expiresIn = (Integer)authResponse.get('expires_in');
+                CG_TIAA_Setting__c authSetting = getIntegrationSetting(appSetting.DeveloperName);
+                
+                if(authSetting == null){
+                    authSetting = new CG_TIAA_Setting__c(Name = appSetting.DeveloperName);
+                }
+                authSetting.OAuth_Token__c = token;
+                authSetting.OAuth_Token_Expiry_DateTime__c = system.now().addSeconds(expiresIn-5);
+                //upsert authSetting;
+                updateToken = true;
+            } 
+        }
+        catch(Exception e){
+            system.debug('tiaaresponse==>'+response);
+            system.debug('tiaaresponseerror==>'+e.getStackTraceString());
+            system.debug('tiaaresponseerror==>'+e.getCause());
+            system.debug('tiaaresponseerror==>'+e.getMessage());
+            system.debug('tiaaresponseerror==>'+e.getTypeName());
+            system.debug('tiaaresponseerror==>'+e);
+            ATH_LogHandler.logException(e, 'CG_INT_TIAAAuthorization', 'getNewTIAAAccessToken', 'TIAA Authentication');
+            log(creditAppId,'TIAA Authentication',e.getTypeName(),'POST',authProviderList[0].TokenUrl,e.getMessage(),correlationId,null);
+            throw new APICalloutException(e.getMessage()+''+e.getCause());
+           // return token;
+        }
+
+        }
+        return token ;
+    } 
+    /**
+*  Description    Method to get Integration Setting.
+*  @name          getIntegrationSetting   
+*  @param 		  string Name
+*  @return 		  CG_TIAA_Setting__c
+*  @throws exception No
+*/        
+    public static CG_TIAA_Setting__c getIntegrationSetting(String name){
+        if(authSetting  == null){
+            List<CG_TIAA_Setting__c> settingList = [Select OAuth_Token__c, OAuth_Token_Expiry_DateTime__c 
+                                                    from CG_TIAA_Setting__c 
+                                                    where name=: name];
+            if(!settingList.isEmpty()){
+                authSetting = settingList[0];
+            }
+        }
+        return authSetting;
+    }
+    
+    /**
+*  Description    Method to sign and send request.
+*  @name          signAndSendRequest   
+*  @param 		  ath_BDN_APP_Setting__mdt appSetting,CG_INT_APIService.Request req
+*  @return 		  HttpResponse
+*  @throws exception No
+*/            
+    public static HttpResponse signAndSendRequest(ath_BDN_APP_Setting__mdt appSetting,CG_INT_APIService.Request req){
+        HttpResponse response =  new HttpResponse();
+        // String jwks;
+        try{
+        if(httpRequest != null){
+            String requestBody = httpRequest.getBody();
+            system.debug('requestBody-'+requestBody);
+            httpRequest.setTimeout(60000);
+            for (String headerName: headers.keySet()) {
+                httpRequest.setHeader(headerName, headers.get(headerName));
+            }
+            if(appSetting != NULL && appSetting.Request_Signature_Standard__c.equalsIgnoreCase('JWKS')){               
+                //JWKS Signature
+                String jwks= getJWKS_Signature(requestBody, appSetting.Certificate_Name__c, appSetting.KID__c); 
+                httpRequest.setHeader('x-jws-signature', jwks);
+                System.debug('===jwks==='+jwks);
+            }
+            if (!Test.isRunningTest()){
+                
+                response = CG_INT_APICallout.getEndpointResponse(httpRequest);//
+            }
+            system.debug('httpRequest body=>'+httpRequest.getBody());
+            system.debug('httpRequest end point=>'+httpRequest.getEndpoint());
+            system.debug('httpRequest jwks=>'+httpRequest.getHeader('x-jws-signature'));
+            //  response = new Http().send(httpRequest);
+            log(req.recordId,req.apiName,response.getStatus()+'_'+response.getStatusCode(),req.httpMethod,httpRequest.getBody(),response.getBody(),headers.get('Correlation-ID'),null);
+            system.debug('191=>'+response.getBody());
+            system.debug('192=>'+response.getStatus()); 
+            system.debug('193=>'+response.getStatusCode()); 
+            if(!useBDNAppIdforAuth && response.getStatusCode() == 401 && authCallCount < 1){
+                
+                system.debug('Authentication failed getting new access token. Retry count: ' + authCallCount);
+                // Previous request details
+                Map<String, String> prevHeaders = headers;
+                HttpRequest prevRequest = httpRequest;
+                
+                // Get new access token
+                authToken = getNewTIAAAccessToken(appSetting);
+                
+                // Update the original message headers with the new token
+                prevHeaders.put('Authorization', 'Bearer '+authToken);
+                
+                // Setup the request with the original request
+                httpRequest = prevRequest;
+                headers =  prevHeaders;
+                
+                // Execute webservice again, service is already signed so no need to sign it again
+                response = signAndSendRequest(appSetting,req);
+                //log.addResponse(response);
+            }
+        }       
+        
+        if(appSetting != null && !appSetting.Is_Mock_Request__c && updateToken && authSetting != null){
+            upsert authSetting;
+        }
+        }
+        catch(Exception e){
+             ATH_LogHandler.logException(e, 'CG_INT_TIAAAuthorization', 'signAndSendRequest', 'API callout');
+           log(req.recordId,req.apiName,e.getMessage(),req.httpMethod,httpRequest.getBody(),e.getTypeName(),headers.get('Correlation-ID'),null);
+             throw new APICalloutException(e.getMessage());
+        }
+        return response;
+        
+    }
+    /**
+*  Description    Method to get JWKS Signature.
+*  @name          getJWKS_Signature   
+*  @param 		  String payload, String certificateName, String kid
+*  @return 		  String
+*  @throws exception No
+*/            
+    
+    public static String getJWKS_Signature(String payload, String certificateName, String kid){
+        
+        List<string> crit = new List<String>{'b64'};
+            
+            String jws; 
+        string cty = 'application/json';
+        Boolean b64 = false;
+        System.debug('JWS_SIGN_ALGORITHM==>'+JWS_SIGN_ALGORITHM);
+        System.debug('kid==>'+kid);
+        System.debug('b64==>'+b64);
+        System.debug('crit==>'+crit);
+        System.debug('payload==>'+payload);
+        System.debug('certificateName==>'+certificateName);
+        try{
+            if(!Test.isRunningTest()){
+                jws = bar_JWS.sign_compactserialize( JWS_SIGN_ALGORITHM, 'application/json', kid, b64, 
+                                                    crit, payload, certificateName ); 
+            }
+            else{
+                jws = EncodingUtil.base64Encode(Blob.valueOf(payload));
+            }
+        }catch(Exception exp){
+               ATH_LogHandler.logException(exp, 'CG_INT_TIAAAuthorization', 'getJWKS_Signature', 'JWKS Signature');
+            System.debug('##Exp' + exp.getMessage()+'\n'+ exp.getStackTraceString());  
+        }
+        
+        return jws;
+    }
+    
+    /**
+*  Description    Method to create integration Log.
+*  @name          getJWKS_Signature   
+*  @param 		  String name,String apiName,String status,String httpMethod,String jsonReq,String jsonRes,String correlationid,Long startTime
+*  @return 		  void
+*  @throws exception No
+*/            
+    
+    public static void log(String name,String apiName,String status,String httpMethod,String jsonReq,String jsonRes,String correlationid,Long startTime){
+        System.debug('in log');
+        System.debug('in log:'+jsonReq);
+        System.debug('in log:'+jsonRes);
+        Transaction_Log__c log=new Transaction_Log__c();  
+        log.Product_Package__c=name;
+        log.Type__c='Assisted';
+        log.APIName__c=apiName;
+        log.Status__c=status;
+        log.Method__c=httpMethod;
+        log.xAPIRequestMessage__c=jsonReq;
+        log.xAPIResponseMessage__c=jsonRes;
+        log.DateTime__c=Datetime.now();
+        log.CorrelationID__c =correlationid;
+        // Long RespTime = System.now().getTime()-startTime;
+        //log.RespTime__c=Resptime;
+        
+        Database.SaveResult results = Database.insert(log, false);
+        system.debug(results);
+        if(log.id!=null){
+            List<Attachment> attachmentList = new List<Attachment>();
+            
+            if(!String.isBlank(jsonReq)){
+                attachmentList.add(new Attachment (Name = 'Request Body.txt', ContentType = 'text/plain', ParentId = log.Id, Body = Blob.valueof(jsonReq)));
+            }
+            
+            if(!String.isBlank(jsonRes)){
+                attachmentList.add(new Attachment (Name = 'Response Body.txt', ContentType = 'text/plain', ParentId = log.Id, Body = Blob.valueof(jsonRes)));
+            }
+            if(!attachmentList.isEmpty()){
+                Database.insert(attachmentList, false);
+            }
+        }
+    }
+       /**
+*  Description    Method to Constructs Request Message for retail wholesale marker
+*  @name          getRWMCalculations   
+*  @param 		  CG_INT_APIService.Request intRequest
+*  @return 		  HttpResponse
+*  @throws exception No
+*/
+    public static HttpResponse getRWMCalculations(CG_INT_APIService.Request intRequest){
+        ath_BDN_APP_Setting__mdt appSetting = appSettingMap.get('BBALD');
+        creditAppId=intRequest.recordId;
+        createRequestMessage(appSetting);
+        httpRequest.setMethod(intRequest.httpMethod);
+        httpRequest.setBody(intRequest.jsonRequest);
+        httpRequest.setEndpoint(appSetting.Base_URL__c+'/rwmCalculations');        
+        return signAndSendRequest(appSetting,intRequest);
+    }
+ 
+}
